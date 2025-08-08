@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -6,10 +6,10 @@ import uvicorn
 from typing import Optional, List
 import logging
 from dotenv import load_dotenv
-from db import DatabaseManager
+from .db import DatabaseManager
 import json
 from threading import Lock
-from transcript_processor import TranscriptProcessor
+from .transcript_processor import TranscriptProcessor
 import time
 import os
 
@@ -54,6 +54,15 @@ app.add_middleware(
 
 # Global database manager instance for meeting management endpoints
 db = DatabaseManager()
+
+# Import authentication utilities
+from .auth import (
+    router as auth_router,
+    get_current_active_user,
+    get_current_active_admin,
+    User,
+)
+app.include_router(auth_router)
 
 # New Pydantic models for meeting management
 class Transcript(BaseModel):
@@ -154,8 +163,10 @@ class SummaryProcessor:
 processor = SummaryProcessor()
 
 # New meeting management endpoints
-@app.get("/meetings", response_model=List[MeetingResponse])
-async def get_meetings():
+
+@app.get("/get-meetings", response_model=List[MeetingResponse])
+async def get_meetings(current_user: User = Depends(get_current_active_user)):
+
     """Get all meetings with their basic information"""
     try:
         meetings = await db.get_all_meetings()
@@ -178,8 +189,16 @@ async def get_meeting(meeting_id: str):
         logger.error(f"Error getting meeting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/save-meeting-title")
+async def save_meeting_title(
+    data: MeetingTitleUpdate,
+    current_user: User = Depends(get_current_active_admin),
+):
+
 @app.post("/meetings/{meeting_id}/title")
 async def save_meeting_title(meeting_id: str, data: MeetingTitleUpdate):
+
     """Save a meeting title"""
     try:
         await db.update_meeting_title(meeting_id, data.title)
@@ -188,8 +207,16 @@ async def save_meeting_title(meeting_id: str, data: MeetingTitleUpdate):
         logger.error(f"Error saving meeting title: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/delete-meeting")
+async def delete_meeting(
+    data: DeleteMeetingRequest,
+    current_user: User = Depends(get_current_active_admin),
+):
+
 @app.delete("/meetings/{meeting_id}")
 async def delete_meeting(meeting_id: str):
+
     """Delete a meeting and all its associated data"""
     try:
         success = await db.delete_meeting(meeting_id)
