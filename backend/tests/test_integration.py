@@ -35,16 +35,21 @@ async def test_end_to_end_processing(tmp_path, monkeypatch):
         "text": "hello world",
         "model": "openai",
         "model_name": "gpt-test",
-        "meeting_id": "m1",
         "chunk_size": 10,
-        "overlap": 0
+        "overlap": 0,
     }
+
     resp = client.post(f"/meetings/{payload['meeting_id']}/summary", json=payload)
+    resp = client.post("/meetings/m1/summary", json=payload)
     assert resp.status_code == 200
+    process_id = resp.json()["process_id"]
 
     await process_transcript_background(payload["meeting_id"], payload["meeting_id"], TranscriptRequest(**payload))
 
     resp = client.get(f"/meetings/{payload['meeting_id']}/summary")
+    await process_transcript_background(process_id, "m1", TranscriptRequest(**payload))
+
+    resp = client.get("/meetings/m1/summary")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "completed"

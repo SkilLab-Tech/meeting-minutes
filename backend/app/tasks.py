@@ -1,6 +1,6 @@
-from .celery_app import celery_app
-from .services.transcript_service import TranscriptService
-from .services.summary_service import SummaryService
+from celery_app import celery_app
+from services.transcript_service import TranscriptService
+from services.summary_service import SummaryService
 
 _transcript_service = TranscriptService()
 _summary_service = SummaryService()

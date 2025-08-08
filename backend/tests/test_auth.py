@@ -52,17 +52,15 @@ def test_refresh_token():
 
 def test_role_enforcement():
     user_tokens = login("alice", "wonderland").json()
-    res_user = client.post(
-        "/delete-meeting",
-        json={"meeting_id": "1"},
+    res_user = client.delete(
+        "/meetings/1",
         headers={"Authorization": f"Bearer {user_tokens['access_token']}"},
     )
     assert res_user.status_code == 403
 
     admin_tokens = login("admin", "adminpass").json()
-    res_admin = client.post(
-        "/delete-meeting",
-        json={"meeting_id": "1"},
+    res_admin = client.delete(
+        "/meetings/1",
         headers={"Authorization": f"Bearer {admin_tokens['access_token']}"},
     )
     assert res_admin.status_code == 200
