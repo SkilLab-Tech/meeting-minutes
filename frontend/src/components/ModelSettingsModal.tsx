@@ -40,7 +40,7 @@ export function ModelSettingsModal({
     if (showModelSettings) {
       const fetchModelConfig = async () => {
         try {
-          const response = await fetch('http://localhost:5167/get-model-config');
+          const response = await fetch('http://localhost:5167/model-config');
           const data = await response.json();
           if (data.provider !== null) {
             setModelConfig(data);
@@ -57,13 +57,7 @@ export function ModelSettingsModal({
 
   const fetchApiKey = async (provider: string) => {
     try {
-      const response = await fetch('http://localhost:5167/get-api-key', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ provider }),
-      });
+      const response = await fetch(`http://localhost:5167/api-key/${provider}`);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
