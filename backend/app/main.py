@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -6,10 +6,10 @@ import uvicorn
 from typing import Optional, List
 import logging
 from dotenv import load_dotenv
-from db import DatabaseManager
+from .db import DatabaseManager
 import json
 from threading import Lock
-from transcript_processor import TranscriptProcessor
+from .transcript_processor import TranscriptProcessor
 import time
 
 # Load environment variables
@@ -52,6 +52,15 @@ app.add_middleware(
 
 # Global database manager instance for meeting management endpoints
 db = DatabaseManager()
+
+# Import authentication utilities
+from .auth import (
+    router as auth_router,
+    get_current_active_user,
+    get_current_active_admin,
+    User,
+)
+app.include_router(auth_router)
 
 # New Pydantic models for meeting management
 class Transcript(BaseModel):
@@ -158,7 +167,7 @@ processor = SummaryProcessor()
 
 # New meeting management endpoints
 @app.get("/get-meetings", response_model=List[MeetingResponse])
-async def get_meetings():
+async def get_meetings(current_user: User = Depends(get_current_active_user)):
     """Get all meetings with their basic information"""
     try:
         meetings = await db.get_all_meetings()
@@ -182,7 +191,10 @@ async def get_meeting(meeting_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/save-meeting-title")
-async def save_meeting_title(data: MeetingTitleUpdate):
+async def save_meeting_title(
+    data: MeetingTitleUpdate,
+    current_user: User = Depends(get_current_active_admin),
+):
     """Save a meeting title"""
     try:
         await db.update_meeting_title(data.meeting_id, data.title)
@@ -192,7 +204,10 @@ async def save_meeting_title(data: MeetingTitleUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/delete-meeting")
-async def delete_meeting(data: DeleteMeetingRequest):
+async def delete_meeting(
+    data: DeleteMeetingRequest,
+    current_user: User = Depends(get_current_active_admin),
+):
     """Delete a meeting and all its associated data"""
     try:
         success = await db.delete_meeting(data.meeting_id)
