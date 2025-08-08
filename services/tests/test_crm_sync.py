@@ -9,7 +9,7 @@ from typing import Any, Dict
 import os
 import sys
 
-import requests
+import httpx
 import pytest
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -33,16 +33,17 @@ def _make_config() -> CRMConfig:
     )
 
 
-def test_salesforce_push_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_salesforce_push_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     config = _make_config()
     sync = CRMSync(config)
 
     calls = {"count": 0}
 
-    def fake_post(url, json, headers, timeout):  # type: ignore[override]
+    async def fake_post(self, url, json, headers, timeout):  # type: ignore[override]
         calls["count"] += 1
         if calls["count"] < 3:
-            raise requests.ConnectionError("boom")
+            raise httpx.RequestError("boom", request=httpx.Request("POST", url))
 
         class Resp:
             status_code = 200
@@ -59,33 +60,35 @@ def test_salesforce_push_retries(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return Resp()
 
-    monkeypatch.setattr(requests, "post", fake_post)
-    result = sync.push_to_salesforce(MEETING)
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    result = await sync.push_to_salesforce(MEETING)
 
     assert result == {"id": 1}
     assert calls["count"] == 3
 
 
-def test_hubspot_push_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_hubspot_push_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     config = _make_config()
     sync = CRMSync(config)
 
-    def fake_post(url, json, headers, timeout):  # type: ignore[override]
-        raise requests.HTTPError("bad")
+    async def fake_post(self, url, json, headers, timeout):  # type: ignore[override]
+        raise httpx.HTTPError("bad")
 
-    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
 
-    with pytest.raises(requests.HTTPError):
-        sync.push_to_hubspot(MEETING)
+    with pytest.raises(httpx.HTTPError):
+        await sync.push_to_hubspot(MEETING)
 
 
-def test_pipedrive_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_pipedrive_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     config = _make_config()
     sync = CRMSync(config)
 
-    captured = {}
+    captured: Dict[str, Any] = {}
 
-    def fake_post(url, json, headers, timeout):  # type: ignore[override]
+    async def fake_post(self, url, json, headers, timeout):  # type: ignore[override]
         captured["url"] = url
         captured["json"] = json
         captured["headers"] = headers
@@ -105,8 +108,8 @@ def test_pipedrive_payload(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return Resp()
 
-    monkeypatch.setattr(requests, "post", fake_post)
-    sync.push_to_pipedrive(MEETING)
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    await sync.push_to_pipedrive(MEETING)
 
     assert captured["url"] == config.pipedrive_url
     assert captured["headers"] == {"Authorization": f"Bearer {config.pipedrive_api_key}"}
