@@ -2,22 +2,29 @@ import asyncio
 import os
 import sys
 
+import os
+import sys
+import asyncio
+
+import pytest
 from fastapi.testclient import TestClient
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from app.main import app
-from app.auth import db as auth_db, pwd_context
+import app.main as main
+import app.auth as auth_module
+from app.auth import pwd_context
 
-client = TestClient(app)
+client = TestClient(main.app)
 
 
 async def _create_user(username: str, password: str, role: str):
-    await auth_db.create_user(username, pwd_context.hash(password), role)
+    await auth_module.db.create_user(username, pwd_context.hash(password), role)
 
 
-# Setup users for tests
-asyncio.run(_create_user("alice", "wonderland", "user"))
-asyncio.run(_create_user("admin", "adminpass", "admin"))
+@pytest.fixture(autouse=True)
+def setup_users(test_db):
+    asyncio.run(_create_user("alice", "wonderland", "user"))
+    asyncio.run(_create_user("admin", "adminpass", "admin"))
 
 
 def login(username: str, password: str):
@@ -45,17 +52,15 @@ def test_refresh_token():
 
 def test_role_enforcement():
     user_tokens = login("alice", "wonderland").json()
-    res_user = client.post(
-        "/delete-meeting",
-        json={"meeting_id": "1"},
+    res_user = client.delete(
+        "/meetings/1",
         headers={"Authorization": f"Bearer {user_tokens['access_token']}"},
     )
     assert res_user.status_code == 403
 
     admin_tokens = login("admin", "adminpass").json()
-    res_admin = client.post(
-        "/delete-meeting",
-        json={"meeting_id": "1"},
+    res_admin = client.delete(
+        "/meetings/1",
         headers={"Authorization": f"Bearer {admin_tokens['access_token']}"},
     )
     assert res_admin.status_code == 200

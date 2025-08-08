@@ -4,109 +4,12 @@ from datetime import datetime
 from typing import Optional, Dict
 import logging
 from contextlib import asynccontextmanager
-import sqlite3
 
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     def __init__(self, db_path: str = "meeting_minutes.db"):
         self.db_path = db_path
-        self._init_db()
-
-    def _init_db(self):
-        """Initialize the database with required tables"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Create meetings table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS meetings (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-            """)
-            
-            # Create transcripts table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS transcripts (
-                    id TEXT PRIMARY KEY,
-                    meeting_id TEXT NOT NULL,
-                    transcript TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    summary TEXT,
-                    action_items TEXT,
-                    key_points TEXT,
-                    FOREIGN KEY (meeting_id) REFERENCES meetings(id)
-                )
-            """)
-            
-            # Create summary_processes table (keeping existing functionality)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS summary_processes (
-                    meeting_id TEXT PRIMARY KEY,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    error TEXT,
-                    result TEXT,
-                    start_time TEXT,
-                    end_time TEXT,
-                    chunk_count INTEGER DEFAULT 0,
-                    processing_time REAL DEFAULT 0.0,
-                    metadata TEXT,
-                    FOREIGN KEY (meeting_id) REFERENCES meetings(id)
-                )
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS transcript_chunks (
-                    meeting_id TEXT PRIMARY KEY,
-                    meeting_name TEXT,
-                    transcript_text TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    model_name TEXT NOT NULL,
-                    chunk_size INTEGER,
-                    overlap INTEGER,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (meeting_id) REFERENCES meetings(id)
-                )
-            """)
-
-            # Create users table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    username TEXT PRIMARY KEY,
-                    hashed_password TEXT NOT NULL,
-                    role TEXT NOT NULL
-                )
-            """)
-
-            # Create refresh tokens table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS refresh_tokens (
-                    username TEXT PRIMARY KEY,
-                    token_hash TEXT NOT NULL,
-                    FOREIGN KEY (username) REFERENCES users(username)
-                )
-            """)
-
-            # Create settings table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS settings (
-                    id TEXT PRIMARY KEY,
-                    provider TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    whisperModel TEXT NOT NULL,
-                    groqApiKey TEXT,
-                    openaiApiKey TEXT,
-                    anthropicApiKey TEXT,
-                    ollamaApiKey TEXT
-                )
-            """)
-
-            conn.commit()
 
     @asynccontextmanager
     async def _get_connection(self):
@@ -235,23 +138,25 @@ class DatabaseManager:
     async def save_meeting(self, meeting_id: str, title: str):
         """Save or update a meeting"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Check if meeting exists
-                cursor.execute("SELECT id FROM meetings WHERE id = ? OR title = ?", (meeting_id, title))
-                existing_meeting = cursor.fetchone()
-                
+            async with self._get_connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT id FROM meetings WHERE id = ? OR title = ?",
+                    (meeting_id, title),
+                )
+                existing_meeting = await cursor.fetchone()
+
                 if not existing_meeting:
-                    # Create new meeting
-                    cursor.execute("""
+                    await conn.execute(
+                        """
                         INSERT INTO meetings (id, title, created_at, updated_at)
                         VALUES (?, ?, datetime('now'), datetime('now'))
-                    """, (meeting_id, title))
+                        """,
+                        (meeting_id, title),
+                    )
                 else:
-                    # If we get here and meeting exists, throw error since we don't want duplicates
                     raise Exception(f"Meeting with ID {meeting_id} already exists")
-                conn.commit()
+
+                await conn.commit()
                 return True
         except Exception as e:
             logger.error(f"Error saving meeting: {str(e)}")
@@ -260,17 +165,17 @@ class DatabaseManager:
     async def save_meeting_transcript(self, meeting_id: str, transcript: str, timestamp: str, summary: str = "", action_items: str = "", key_points: str = ""):
         """Save a transcript for a meeting"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Save transcript
-                cursor.execute("""
+            async with self._get_connection() as conn:
+                await conn.execute(
+                    """
                     INSERT INTO transcripts (
                         meeting_id, transcript, timestamp, summary, action_items, key_points
                     ) VALUES (?, ?, ?, ?, ?, ?)
-                """, (meeting_id, transcript, timestamp, summary, action_items, key_points))
-                
-                conn.commit()
+                    """,
+                    (meeting_id, transcript, timestamp, summary, action_items, key_points),
+                )
+
+                await conn.commit()
                 return True
         except Exception as e:
             logger.error(f"Error saving transcript: {str(e)}")
