@@ -11,6 +11,7 @@ async def test_update_and_delete_meeting(tmp_path):
     main.db = db
     main.processor.db = db
     await db.save_meeting("m1", "Initial")
+    await auth_db.create_user("admin", pwd_context.hash("adminpass"), "admin")
 
     # Create admin user for authentication
     await auth_db.create_user("admin_api", pwd_context.hash("adminpass"), "admin")
@@ -27,6 +28,17 @@ async def test_update_and_delete_meeting(tmp_path):
     meeting = await db.get_meeting("m1")
     assert meeting["title"] == "Updated"
 
+    tokens = client.post(
+        "/token",
+        data={"username": "admin", "password": "adminpass", "grant_type": "password"},
+    ).json()
+    resp = client.post(
+        "/delete-meeting",
+        json={"meeting_id": "m1"},
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+
     resp = client.delete("/meetings/m1", headers=headers)
+
     assert resp.status_code == 200
     assert await db.get_meeting("m1") is None
