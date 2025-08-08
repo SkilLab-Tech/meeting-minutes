@@ -2,13 +2,16 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-import main
-from main import TranscriptRequest, process_transcript_background
-from db import DatabaseManager
+import app.main as main
+from app.main import TranscriptRequest, process_transcript_background
+from app.db import DatabaseManager
+from migrations import run_migrations
 
 @pytest.mark.asyncio
 async def test_end_to_end_processing(tmp_path, monkeypatch):
-    db = DatabaseManager(str(tmp_path / "test.db"))
+    db_path = tmp_path / "test.db"
+    await run_migrations(str(db_path))
+    db = DatabaseManager(str(db_path))
     main.db = db
     main.processor.db = db
 
@@ -36,12 +39,12 @@ async def test_end_to_end_processing(tmp_path, monkeypatch):
         "chunk_size": 10,
         "overlap": 0
     }
-    resp = client.post("/process-transcript", json=payload)
+    resp = client.post(f"/meetings/{payload['meeting_id']}/summary", json=payload)
     assert resp.status_code == 200
 
-    await process_transcript_background("m1", TranscriptRequest(**payload))
+    await process_transcript_background(payload["meeting_id"], payload["meeting_id"], TranscriptRequest(**payload))
 
-    resp = client.get("/get-summary/m1")
+    resp = client.get(f"/meetings/{payload['meeting_id']}/summary")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "completed"

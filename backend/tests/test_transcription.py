@@ -1,8 +1,8 @@
 import json
 import pytest
 
-import transcript_processor as tp_module
-from transcript_processor import TranscriptProcessor, Section, SummaryResponse
+import app.transcript_processor as tp_module
+from app.transcript_processor import TranscriptProcessor, Section, SummaryResponse
 
 class DummyDB:
     async def get_api_key(self, provider):

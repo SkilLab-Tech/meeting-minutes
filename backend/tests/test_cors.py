@@ -4,13 +4,13 @@ import importlib
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-APP_DIR = Path(__file__).resolve().parent.parent / "app"
-sys.path.insert(0, str(APP_DIR))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_DIR))
 
 
 def create_app(monkeypatch, origins):
     monkeypatch.setenv("ALLOWED_ORIGINS", ",".join(origins))
-    import main
+    import app.main as main
     importlib.reload(main)
     return main.app
 
