@@ -11,7 +11,9 @@ import json
 from threading import Lock
 from .transcript_processor import TranscriptProcessor
 import time
+from .tasks import generate_summary_task
 import os
+
 
 # Load environment variables
 load_dotenv()
@@ -101,6 +103,11 @@ class TranscriptRequest(BaseModel):
     model_name: str
     chunk_size: Optional[int] = 5000
     overlap: Optional[int] = 1000
+
+
+class AsyncSummaryRequest(BaseModel):
+    """Request model for asynchronous summary generation"""
+    text: str
 
 class SummaryProcessor:
     """Handles the processing of summaries in a thread-safe way"""
@@ -471,6 +478,22 @@ async def save_model_config(request: SaveModelConfigRequest):
 async def get_api_key(provider: str):
     """Get the API key for a given provider"""
     return await db.get_api_key(provider)
+
+
+@app.post("/summary/async")
+async def create_async_summary(request: AsyncSummaryRequest):
+    """Create an asynchronous summary task"""
+    task = generate_summary_task.delay(request.text)
+    return {"task_id": task.id}
+
+
+@app.get("/summary/async/{task_id}")
+async def get_async_summary(task_id: str):
+    """Fetch the result of an asynchronous summary task"""
+    result = generate_summary_task.AsyncResult(task_id)
+    if result.ready():
+        return {"status": "completed", "result": result.result}
+    return {"status": "processing"}
 
 
 
