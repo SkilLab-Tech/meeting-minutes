@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 
-from .db import DatabaseManager
+from db import DatabaseManager
 
 SECRET_KEY = os.getenv("SECRET_KEY", "secret-key")
 ALGORITHM = "HS256"
