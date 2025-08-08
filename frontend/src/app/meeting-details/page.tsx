@@ -42,7 +42,7 @@ export default function MeetingDetails() {
 
     const fetchMeetingDetails = async () => {
       try {
-        const response = await fetch(`http://localhost:5167/get-meeting/${currentMeeting.id}`, {
+        const response = await fetch(`http://localhost:5167/meetings/${currentMeeting.id}`, {
           cache: 'no-store',
         });
         if (!response.ok) {
@@ -59,7 +59,7 @@ export default function MeetingDetails() {
 
     const fetchMeetingSummary = async () => {
       try {
-        const summaryResponse = await fetch(`http://localhost:5167/get-summary/${currentMeeting.id}`, {
+        const summaryResponse = await fetch(`http://localhost:5167/meetings/${currentMeeting.id}/summary`, {
           cache: 'no-store',
         });
         if (!summaryResponse.ok) {
