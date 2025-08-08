@@ -71,6 +71,8 @@
 - [Contributions](#contributions)
 - [Acknowledgments](#acknowledgments)
 - [Star History](#star-history)
+- [API Documentation](docs/api.md) *(note: some endpoints such as `/save-meeting-title` and `/delete-meeting` require an admin token)*
+- [Developer Guide](docs/developer.md)
 
 # Overview
 

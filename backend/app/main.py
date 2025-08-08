@@ -1,5 +1,12 @@
-"""Application entry point for the FastAPI backend."""
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
+import uvicorn
+from typing import Optional, List, Tuple
 
+"""Application entry point for the FastAPI backend."""
 import logging
 from dotenv import load_dotenv
 from db import DatabaseManager
@@ -43,11 +50,18 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+# Configure CORS with environment-based trusted origins
+allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+
 allowed_origins = [
     origin.strip()
     for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -65,6 +79,7 @@ from auth import (
     router as auth_router,
     get_current_active_user,
     get_current_active_admin,
+    get_current_user,
     User,
 )
 
@@ -118,6 +133,7 @@ class TranscriptRequest(BaseModel):
     text: str
     model: str
     model_name: str
+    meeting_id: str
     chunk_size: Optional[int] = 5000
     overlap: Optional[int] = 1000
 
@@ -139,7 +155,14 @@ class SummaryProcessor:
             logger.error(f"Failed to initialize SummaryProcessor: {str(e)}", exc_info=True)
             raise
 
-    async def process_transcript(self, text: str, model: str, model_name: str, chunk_size: int = 5000, overlap: int = 1000) -> tuple:
+    async def process_transcript(
+        self,
+        text: str,
+        model: str,
+        model_name: str,
+        chunk_size: int = 5000,
+        overlap: int = 1000,
+    ) -> Tuple[int, List[str]]:
         """Process a transcript text"""
         try:
             if not text:
@@ -214,6 +237,10 @@ async def get_meeting(meeting_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/save-meeting-title")
+
+async def save_meeting_title_admin(data: SaveMeetingTitleRequest):
+    """Save a meeting title (legacy endpoint)"""
+
 async def save_meeting_title(
     data: SaveMeetingTitleRequest,
 
@@ -224,6 +251,7 @@ async def update_meeting_title(
     current_user: User = Depends(get_current_active_admin),
 ):
     """Save a meeting title"""
+
     try:
         await db.update_meeting_title(data.meeting_id, data.title)
         return {"message": "Meeting title saved successfully"}
@@ -246,6 +274,18 @@ async def save_meeting_title_path(meeting_id: str, data: MeetingTitleUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/delete-meeting")
+async def delete_meeting_admin(
+    data: DeleteMeetingRequest,
+    token: str | None = Security(oauth2_scheme_optional),
+):
+    """Delete a meeting and all its associated data (legacy endpoint)"""
+    try:
+        if token:
+            user = await get_current_user(token)
+            if user.role.lower() != "admin":
+                raise HTTPException(status_code=403, detail="Not enough privileges")
+
 @app.delete("/meetings/{meeting_id}")
 async def delete_meeting(
     meeting_id: str,
@@ -258,6 +298,12 @@ async def delete_meeting(
             return {"message": "Meeting deleted successfully"}
         else:
             raise HTTPException(status_code=500, detail="Failed to delete meeting")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting meeting: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
     except Exception as e:
         logger.error(f"Error deleting meeting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -276,10 +322,11 @@ async def delete_meeting_path(meeting_id: str):
         logger.error(f"Error deleting meeting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_transcript_background(process_id: str, meeting_id: str, transcript: TranscriptRequest):
+async def process_transcript_background(process_id: str, transcript: TranscriptRequest):
     """Background task to process transcript"""
     try:
         logger.info(f"Starting background processing for process_id: {process_id}")
+        meeting_id = transcript.meeting_id
 
         num_chunks, all_json_data = await processor.process_transcript(
             text=transcript.text,
@@ -348,6 +395,8 @@ async def process_transcript_api(
         # Create new process linked to meeting_id
         process_id = await processor.db.create_process(meeting_id)
 
+        transcript.meeting_id = meeting_id
+
         # Save transcript data associated with meeting_id
         await processor.db.save_transcript(
             meeting_id,
@@ -362,7 +411,6 @@ async def process_transcript_api(
         background_tasks.add_task(
             process_transcript_background,
             process_id,
-            meeting_id,
             transcript
         )
 
@@ -373,6 +421,29 @@ async def process_transcript_api(
 
     except Exception as e:
         logger.error(f"Error in process_transcript_api: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/process-transcript")
+async def process_transcript_legacy(transcript: TranscriptRequest, background_tasks: BackgroundTasks):
+    """Legacy endpoint to process a transcript"""
+    try:
+        process_id = await processor.db.create_process(transcript.meeting_id)
+        await processor.db.save_transcript(
+            transcript.meeting_id,
+            transcript.text,
+            transcript.model,
+            transcript.model_name,
+            transcript.chunk_size,
+            transcript.overlap
+        )
+        background_tasks.add_task(
+            process_transcript_background,
+            process_id,
+            transcript
+        )
+        return {"message": "Processing started", "process_id": process_id}
+    except Exception as e:
+        logger.error(f"Error in process_transcript endpoint: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/meetings/{meeting_id}/summary")
@@ -467,6 +538,10 @@ async def get_summary(meeting_id: str):
                 "error": f"Internal server error: {str(e)}"
             }
         )
+
+@app.get("/get-summary/{meeting_id}")
+async def get_summary_legacy(meeting_id: str):
+    return await get_summary(meeting_id)
 
 @app.post("/meetings")
 async def create_meeting(request: SaveTranscriptRequest):
