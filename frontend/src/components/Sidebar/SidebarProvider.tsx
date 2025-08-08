@@ -50,7 +50,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const fetchMeetings = async () => {
       try {
-        const response = await fetch('http://localhost:5167/get-meetings', {
+        const response = await fetch('http://localhost:5167/meetings', {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
