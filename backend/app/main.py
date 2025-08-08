@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -12,6 +12,8 @@ from threading import Lock
 from .transcript_processor import TranscriptProcessor
 import time
 from .tasks import generate_summary_task
+import os
+
 
 # Load environment variables
 load_dotenv()
@@ -41,18 +43,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Configure CORS with environment-based trusted origins
+allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # Allow all origins for testing
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],     # Allow all methods
-    allow_headers=["*"],     # Allow all headers
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Cache-Control", "Pragma", "Expires"],
     max_age=3600,            # Cache preflight requests for 1 hour
 )
 
 # Global database manager instance for meeting management endpoints
 db = DatabaseManager()
+
+# Import authentication utilities
+from .auth import (
+    router as auth_router,
+    get_current_active_user,
+    get_current_active_admin,
+    User,
+)
+app.include_router(auth_router)
 
 # New Pydantic models for meeting management
 class Transcript(BaseModel):
@@ -72,11 +84,7 @@ class MeetingDetailsResponse(BaseModel):
     transcripts: List[Transcript]
 
 class MeetingTitleUpdate(BaseModel):
-    meeting_id: str
     title: str
-
-class DeleteMeetingRequest(BaseModel):
-    meeting_id: str
 
 class SaveTranscriptRequest(BaseModel):
     meeting_title: str
@@ -89,11 +97,10 @@ class SaveModelConfigRequest(BaseModel):
     apiKey: Optional[str] = None
 
 class TranscriptRequest(BaseModel):
-    """Request model for transcript text, updated with meeting_id"""
+    """Request model for transcript text"""
     text: str
     model: str
     model_name: str
-    meeting_id: str
     chunk_size: Optional[int] = 5000
     overlap: Optional[int] = 1000
 
@@ -163,8 +170,10 @@ class SummaryProcessor:
 processor = SummaryProcessor()
 
 # New meeting management endpoints
+
 @app.get("/get-meetings", response_model=List[MeetingResponse])
-async def get_meetings():
+async def get_meetings(current_user: User = Depends(get_current_active_user)):
+
     """Get all meetings with their basic information"""
     try:
         meetings = await db.get_all_meetings()
@@ -173,7 +182,7 @@ async def get_meetings():
         logger.error(f"Error getting meetings: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/get-meeting/{meeting_id}", response_model=MeetingDetailsResponse)
+@app.get("/meetings/{meeting_id}", response_model=MeetingDetailsResponse)
 async def get_meeting(meeting_id: str):
     """Get a specific meeting by ID with all its details"""
     try:
@@ -187,21 +196,37 @@ async def get_meeting(meeting_id: str):
         logger.error(f"Error getting meeting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/save-meeting-title")
-async def save_meeting_title(data: MeetingTitleUpdate):
+async def save_meeting_title(
+    data: MeetingTitleUpdate,
+    current_user: User = Depends(get_current_active_admin),
+):
+
+@app.post("/meetings/{meeting_id}/title")
+async def save_meeting_title(meeting_id: str, data: MeetingTitleUpdate):
+
     """Save a meeting title"""
     try:
-        await db.update_meeting_title(data.meeting_id, data.title)
+        await db.update_meeting_title(meeting_id, data.title)
         return {"message": "Meeting title saved successfully"}
     except Exception as e:
         logger.error(f"Error saving meeting title: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/delete-meeting")
-async def delete_meeting(data: DeleteMeetingRequest):
+async def delete_meeting(
+    data: DeleteMeetingRequest,
+    current_user: User = Depends(get_current_active_admin),
+):
+
+@app.delete("/meetings/{meeting_id}")
+async def delete_meeting(meeting_id: str):
+
     """Delete a meeting and all its associated data"""
     try:
-        success = await db.delete_meeting(data.meeting_id)
+        success = await db.delete_meeting(meeting_id)
         if success:
             return {"message": "Meeting deleted successfully"}
         else:
@@ -210,7 +235,7 @@ async def delete_meeting(data: DeleteMeetingRequest):
         logger.error(f"Error deleting meeting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_transcript_background(process_id: str, transcript: TranscriptRequest):
+async def process_transcript_background(process_id: str, meeting_id: str, transcript: TranscriptRequest):
     """Background task to process transcript"""
     try:
         logger.info(f"Starting background processing for process_id: {process_id}")
@@ -252,7 +277,7 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
 
         # Update database with meeting name using meeting_id
         if final_summary["MeetingName"]:
-            await processor.db.update_meeting_name(transcript.meeting_id, final_summary["MeetingName"])
+            await processor.db.update_meeting_name(meeting_id, final_summary["MeetingName"])
 
         # Save final result
         if all_json_data:
@@ -271,19 +296,20 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
         except Exception as db_e:
             logger.error(f"Failed to update DB status to failed for {process_id}: {db_e}", exc_info=True)
 
-@app.post("/process-transcript")
+@app.post("/meetings/{meeting_id}/summary")
 async def process_transcript_api(
+    meeting_id: str,
     transcript: TranscriptRequest,
     background_tasks: BackgroundTasks
 ):
     """Process a transcript text with background processing"""
     try:
         # Create new process linked to meeting_id
-        process_id = await processor.db.create_process(transcript.meeting_id)
+        process_id = await processor.db.create_process(meeting_id)
 
         # Save transcript data associated with meeting_id
         await processor.db.save_transcript(
-            transcript.meeting_id,
+            meeting_id,
             transcript.text,
             transcript.model,
             transcript.model_name,
@@ -295,6 +321,7 @@ async def process_transcript_api(
         background_tasks.add_task(
             process_transcript_background,
             process_id,
+            meeting_id,
             transcript
         )
 
@@ -307,7 +334,7 @@ async def process_transcript_api(
         logger.error(f"Error in process_transcript_api: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/get-summary/{meeting_id}")
+@app.get("/meetings/{meeting_id}/summary")
 async def get_summary(meeting_id: str):
     """Get the summary for a given meeting ID"""
     try:
@@ -400,9 +427,9 @@ async def get_summary(meeting_id: str):
             }
         )
 
-@app.post("/save-transcript")
-async def save_transcript(request: SaveTranscriptRequest):
-    """Save transcript segments for a meeting without processing"""
+@app.post("/meetings")
+async def create_meeting(request: SaveTranscriptRequest):
+    """Create a meeting and save transcript segments without processing"""
     try:
         logger.info(f"Received save-transcript request for meeting: {request.meeting_title}")
         logger.info(f"Number of transcripts to save: {len(request.transcripts)}")
@@ -430,7 +457,7 @@ async def save_transcript(request: SaveTranscriptRequest):
         logger.error(f"Error saving transcript: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/get-model-config")
+@app.get("/model-config")
 async def get_model_config():
     """Get the current model configuration"""
     model_config = await db.get_model_config()
@@ -439,7 +466,7 @@ async def get_model_config():
         model_config["apiKey"] = api_key
     return model_config
 
-@app.post("/save-model-config")
+@app.post("/model-config")
 async def save_model_config(request: SaveModelConfigRequest):
     """Save the model configuration"""
     await db.save_model_config(request.provider, request.model, request.whisperModel)
@@ -447,13 +474,10 @@ async def save_model_config(request: SaveModelConfigRequest):
         await db.save_api_key(request.apiKey, request.provider)
     return {"status": "success", "message": "Model configuration saved successfully"}  
 
-class GetApiKeyRequest(BaseModel):
-    provider: str
-
-@app.post("/get-api-key")
-async def get_api_key(request: GetApiKeyRequest):
+@app.get("/api-key/{provider}")
+async def get_api_key(provider: str):
     """Get the API key for a given provider"""
-    return await db.get_api_key(request.provider)
+    return await db.get_api_key(provider)
 
 
 @app.post("/summary/async")

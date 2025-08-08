@@ -32,7 +32,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
   useEffect(() => {
     const fetchModelConfig = async () => {
       try {
-        const response = await fetch('http://localhost:5167/get-model-config');
+        const response = await fetch('http://localhost:5167/model-config');
         const data = await response.json();
         if (data.provider !== null) {
           setModelConfig(data);
@@ -65,14 +65,13 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       
       // Process transcript and get process_id
       console.log('Processing transcript...');
-      const response = await fetch('http://localhost:5167/process-transcript', {
+      const response = await fetch(`http://localhost:5167/meetings/${meeting.id}/summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: fullTranscript,
           model: modelConfig.provider,
           model_name: modelConfig.model,
-          meeting_id: meeting.id,
           chunk_size: 40000,
           overlap: 1000
         }),
@@ -92,7 +91,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       // Poll for summary status
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await fetch(`http://localhost:5167/get-summary/${process_id}`);
+          const statusResponse = await fetch(`http://localhost:5167/meetings/${process_id}/summary`);
 
           if (!statusResponse.ok) {
             const errorData = await statusResponse.json();
@@ -221,14 +220,13 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       
       // Process transcript and get process_id
       console.log('Processing transcript...');
-      const response = await fetch('http://localhost:5167/process-transcript', {
+      const response = await fetch(`http://localhost:5167/meetings/${meeting.id}/summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: originalTranscript,
           model: modelConfig.provider,
           model_name: modelConfig.model,
-          meeting_id: meeting.id,
           chunk_size: 40000,
           overlap: 1000
         })
@@ -246,7 +244,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       // Poll for summary status
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await fetch(`http://localhost:5167/get-summary/${process_id}`);
+          const statusResponse = await fetch(`http://localhost:5167/meetings/${process_id}/summary`);
           if (!statusResponse.ok) {
             const errorData = await statusResponse.json();
             console.error('Get summary failed:', errorData);
@@ -351,18 +349,12 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
   const handleSaveMeetingTitle = async () => {
     try {
-      const payload = {
-        meeting_id: meeting.id,
-        title: meetingTitle
-      };
-      console.log('Saving meeting title with payload:', payload);
-      
-      const response = await fetch('http://localhost:5167/save-meeting-title', {
+      const response = await fetch(`http://localhost:5167/meetings/${meeting.id}/title`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ title: meetingTitle })
       });
 
       if (!response.ok) {
@@ -398,7 +390,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       };
       console.log('Saving model config with payload:', payload);
       
-      const response = await fetch('http://localhost:5167/save-model-config', {
+      const response = await fetch('http://localhost:5167/model-config', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

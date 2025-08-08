@@ -91,11 +91,11 @@ Currently, no authentication is required for API endpoints.
 
 ## Endpoints
 
-### 1. Process Transcript
-Process a transcript text directly.
+### 1. Generate Summary
+Process a transcript text for a specific meeting.
 
-**Endpoint:** `/process-transcript`  
-**Method:** POST  
+**Endpoint:** `/meetings/{meeting_id}/summary`
+**Method:** POST
 **Content-Type:** `application/json`
 
 #### Request Body
@@ -118,7 +118,7 @@ Process a transcript text directly.
 ```
 
 ### 2. Upload Transcript
-Upload and process a transcript file. This endpoint provides the same functionality as `/process-transcript` but accepts a file upload instead of raw text.
+Upload and process a transcript file. This endpoint provides the same functionality as `/meetings/{meeting_id}/summary` but accepts a file upload instead of raw text.
 
 **Endpoint:** `/upload-transcript`  
 **Method:** POST  
@@ -142,15 +142,15 @@ Upload and process a transcript file. This endpoint provides the same functional
 ```
 
 ### 3. Get Summary
-Retrieve the generated summary for a specific process.
+Retrieve the generated summary for a specific meeting.
 
-**Endpoint:** `/get-summary/{process_id}`  
+**Endpoint:** `/meetings/{meeting_id}/summary`
 **Method:** GET
 
 #### Path Parameters
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| process_id | String | Yes | ID of the process to retrieve |
+| meeting_id | String | Yes | ID of the meeting to retrieve |
 
 #### Response Codes
 | Code | Description |
@@ -274,7 +274,7 @@ curl -X POST -F "file=@transcript.txt" http://localhost:5167/upload-transcript
 
 ### 2. Check Processing Status
 ```bash
-curl http://localhost:5167/get-summary/1a2e5c9c-a35f-452f-9f92-be66620fcb3f
+curl http://localhost:5167/meetings/1a2e5c9c-a35f-452f-9f92-be66620fcb3f/summary
 ```
 
 ## Notes

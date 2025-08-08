@@ -74,6 +74,24 @@ class DatabaseManager:
                 )
             """)
 
+            # Create users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    hashed_password TEXT NOT NULL,
+                    role TEXT NOT NULL
+                )
+            """)
+
+            # Create refresh tokens table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS refresh_tokens (
+                    username TEXT PRIMARY KEY,
+                    token_hash TEXT NOT NULL,
+                    FOREIGN KEY (username) REFERENCES users(username)
+                )
+            """)
+
             # Create settings table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
@@ -423,6 +441,55 @@ class DatabaseManager:
             api_key_name = "ollamaApiKey"
         async with self._get_connection() as conn:
             await conn.execute(f"UPDATE settings SET {api_key_name} = NULL WHERE id = '1'")
+            await conn.commit()
+
+    async def create_user(self, username: str, hashed_password: str, role: str):
+        """Create or update a user"""
+        async with self._get_connection() as conn:
+            await conn.execute(
+                "INSERT OR REPLACE INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
+                (username, hashed_password, role)
+            )
+            await conn.commit()
+
+    async def get_user(self, username: str):
+        """Retrieve a user by username"""
+        async with self._get_connection() as conn:
+            async with conn.execute(
+                "SELECT username, hashed_password, role FROM users WHERE username = ?",
+                (username,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return {"username": row[0], "hashed_password": row[1], "role": row[2]}
+                return None
+
+    async def save_refresh_token(self, username: str, token_hash: str):
+        """Save or update a refresh token for a user"""
+        async with self._get_connection() as conn:
+            await conn.execute(
+                "INSERT OR REPLACE INTO refresh_tokens (username, token_hash) VALUES (?, ?)",
+                (username, token_hash)
+            )
+            await conn.commit()
+
+    async def get_refresh_token_hash(self, username: str):
+        """Get the stored refresh token hash for a user"""
+        async with self._get_connection() as conn:
+            async with conn.execute(
+                "SELECT token_hash FROM refresh_tokens WHERE username = ?",
+                (username,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    async def delete_refresh_token(self, username: str):
+        """Delete a refresh token for a user"""
+        async with self._get_connection() as conn:
+            await conn.execute(
+                "DELETE FROM refresh_tokens WHERE username = ?",
+                (username,)
+            )
             await conn.commit()
             
    

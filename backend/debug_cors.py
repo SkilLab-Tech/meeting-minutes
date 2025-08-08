@@ -1,13 +1,13 @@
 """
-Debug script to test the /process-transcript endpoint
+Debug script to test the /meetings/{meeting_id}/summary endpoint
 """
 import requests
 import json
 import sys
 
-def test_process_transcript(text="This is a test transcript"):
-    """Test the process-transcript endpoint"""
-    url = "http://localhost:5167/process-transcript"
+def test_process_transcript(meeting_id="test-meeting", text="This is a test transcript"):
+    """Test the summary processing endpoint"""
+    url = f"http://localhost:5167/meetings/{meeting_id}/summary"
     
     payload = {
         "text": text,
@@ -41,4 +41,4 @@ def test_process_transcript(text="This is a test transcript"):
 
 if __name__ == "__main__":
     text = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "This is a test transcript"
-    test_process_transcript(text)
+    test_process_transcript(text=text)

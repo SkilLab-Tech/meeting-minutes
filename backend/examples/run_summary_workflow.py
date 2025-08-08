@@ -23,17 +23,16 @@ logger = logging.getLogger(__name__)
 
 def process_transcript(base_url, transcript_text, provider, model_name, chunk_size, overlap, meeting_id):
     """Sends the transcript to the processing endpoint."""
-    url = f"{base_url}/process-transcript"
+    url = f"{base_url}/meetings/{meeting_id}/summary"
     payload = {
         "text": transcript_text,
         "model": provider,
         "model_name": model_name,
-        "meeting_id": meeting_id, # *** ADDED meeting_id ***
         "chunk_size": chunk_size,
         "overlap": overlap
     }
     headers = {'Content-Type': 'application/json'}
-    logger.info(f"Sending POST request to {url} with model '{provider}/{model_name}' and meeting_id '{meeting_id}'...")
+    logger.info(f"Sending POST request to {url} with model '{provider}/{model_name}'...")
     logger.debug(f"Payload: {json.dumps(payload, indent=2)}") # Log payload for debugging if needed
 
     try:
@@ -43,13 +42,9 @@ def process_transcript(base_url, transcript_text, provider, model_name, chunk_si
 
         response_data = response.json()
         if "process_id" in response_data:
-            # IMPORTANT: The backend returns 'process_id', which *is* the meeting_id we need for polling.
             returned_process_id = response_data['process_id']
             logger.info(f"Successfully initiated processing. Process ID received: {returned_process_id}")
-            # Optional: Verify if returned_process_id matches the meeting_id sent
-            if returned_process_id != meeting_id:
-                 logger.warning(f"Returned process_id '{returned_process_id}' differs from generated meeting_id '{meeting_id}'. Using returned ID for polling.")
-            return returned_process_id # Return the ID provided by the backend
+            return returned_process_id
         else:
             logger.error(f"'process_id' not found in response: {response_data}")
             return None
@@ -69,7 +64,7 @@ def process_transcript(base_url, transcript_text, provider, model_name, chunk_si
 def poll_summary_status(base_url, meeting_id_for_polling, interval, max_attempts):
     """Polls the summary status endpoint until completion or error, using meeting_id."""
     # *** UPDATED endpoint path ***
-    url = f"{base_url}/get-summary/{meeting_id_for_polling}"
+    url = f"{base_url}/meetings/{meeting_id_for_polling}/summary"
     logger.info(f"Polling status endpoint: {url} (every {interval}s) for meeting_id '{meeting_id_for_polling}'")
 
     for attempt in range(max_attempts):
@@ -194,7 +189,7 @@ if __name__ == "__main__":
     # Use the process_id returned by the API (which is the meeting_id) for polling
     summary_result = poll_summary_status(
         args.base_url,
-        process_id_from_api, # Use the ID received from the /process-transcript response
+        process_id_from_api, # Use the ID received from the processing response
         args.interval,
         args.attempts
     )
