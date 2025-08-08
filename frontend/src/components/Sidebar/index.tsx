@@ -23,16 +23,12 @@ const Sidebar: React.FC = () => {
 
   const handleDelete = async (itemId: string) => {
     console.log('Deleting item:', itemId);
-    const payload = {
-      meeting_id: itemId
-    };
-    const response = await fetch('http://localhost:5167/delete-meeting', {
+    const response = await fetch(`http://localhost:5167/meetings/${itemId}`, {
       cache: 'no-store',
-      method: 'POST',
+      method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
+      }
     });
 
     if (response.ok) {
