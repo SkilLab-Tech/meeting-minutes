@@ -11,6 +11,7 @@ import json
 from threading import Lock
 from transcript_processor import TranscriptProcessor
 import time
+import os
 
 # Load environment variables
 load_dotenv()
@@ -40,13 +41,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Configure CORS with environment-based trusted origins
+allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # Allow all origins for testing
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],     # Allow all methods
-    allow_headers=["*"],     # Allow all headers
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Cache-Control", "Pragma", "Expires"],
     max_age=3600,            # Cache preflight requests for 1 hour
 )
 
