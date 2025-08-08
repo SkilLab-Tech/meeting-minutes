@@ -6,12 +6,12 @@ import uvicorn
 from typing import Optional, List
 import logging
 from dotenv import load_dotenv
-from .db import DatabaseManager
+from db import DatabaseManager
 import json
 from threading import Lock
-from .transcript_processor import TranscriptProcessor
+from transcript_processor import TranscriptProcessor
 import time
-from .tasks import generate_summary_task
+from tasks import generate_summary_task
 import os
 
 
@@ -58,7 +58,7 @@ app.add_middleware(
 db = DatabaseManager()
 
 # Import authentication utilities
-from .auth import (
+from auth import (
     router as auth_router,
     get_current_active_user,
     get_current_active_admin,
@@ -196,33 +196,27 @@ async def get_meeting(meeting_id: str):
         logger.error(f"Error getting meeting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/save-meeting-title")
-async def save_meeting_title(
+@app.post("/meetings/{meeting_id}/title")
+async def update_meeting_title(
+    meeting_id: str,
     data: MeetingTitleUpdate,
     current_user: User = Depends(get_current_active_admin),
 ):
 
-@app.post("/meetings/{meeting_id}/title")
-async def save_meeting_title(meeting_id: str, data: MeetingTitleUpdate):
-
-    """Save a meeting title"""
+    """Update a meeting title"""
     try:
         await db.update_meeting_title(meeting_id, data.title)
-        return {"message": "Meeting title saved successfully"}
+        return {"message": "Meeting title updated successfully"}
     except Exception as e:
-        logger.error(f"Error saving meeting title: {str(e)}", exc_info=True)
+        logger.error(f"Error updating meeting title: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/delete-meeting")
+@app.delete("/meetings/{meeting_id}")
 async def delete_meeting(
-    data: DeleteMeetingRequest,
+    meeting_id: str,
     current_user: User = Depends(get_current_active_admin),
 ):
-
-@app.delete("/meetings/{meeting_id}")
-async def delete_meeting(meeting_id: str):
 
     """Delete a meeting and all its associated data"""
     try:
