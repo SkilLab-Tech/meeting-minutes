@@ -8,12 +8,12 @@ be reached after the configured number of attempts.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Dict
 import os
-import time
 
-import requests
+import httpx
 
 
 @dataclass
@@ -22,6 +22,7 @@ class CRMConfig:
 
     The configuration pulls API keys and endpoint URLs from environment
     variables so they can be easily customised without modifying code.
+    HTTP requests use ``httpx.AsyncClient`` and run asynchronously.
     """
 
     salesforce_api_key: str
@@ -54,32 +55,39 @@ class CRMSync:
         self.config = config or CRMConfig.from_env()
 
     # Public API -----------------------------------------------------------------
-    def push_to_salesforce(self, meeting: Dict[str, Any]) -> Dict[str, Any]:
+    async def push_to_salesforce(self, meeting: Dict[str, Any]) -> Dict[str, Any]:
         payload = self._map_salesforce(meeting)
         headers = {"Authorization": f"Bearer {self.config.salesforce_api_key}"}
-        return self._post(self.config.salesforce_url, payload, headers)
+        return await self._post(self.config.salesforce_url, payload, headers)
 
-    def push_to_hubspot(self, meeting: Dict[str, Any]) -> Dict[str, Any]:
+    async def push_to_hubspot(self, meeting: Dict[str, Any]) -> Dict[str, Any]:
         payload = self._map_hubspot(meeting)
         headers = {"Authorization": f"Bearer {self.config.hubspot_api_key}"}
-        return self._post(self.config.hubspot_url, payload, headers)
+        return await self._post(self.config.hubspot_url, payload, headers)
 
-    def push_to_pipedrive(self, meeting: Dict[str, Any]) -> Dict[str, Any]:
+    async def push_to_pipedrive(self, meeting: Dict[str, Any]) -> Dict[str, Any]:
         payload = self._map_pipedrive(meeting)
         headers = {"Authorization": f"Bearer {self.config.pipedrive_api_key}"}
-        return self._post(self.config.pipedrive_url, payload, headers)
+        return await self._post(self.config.pipedrive_url, payload, headers)
 
     # Internal helpers -----------------------------------------------------------
-    def _post(self, url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
-        for attempt in range(1, self.config.max_retries + 1):
-            try:
-                response = requests.post(url, json=payload, headers=headers, timeout=5)
-                response.raise_for_status()
-                return response.json() if response.content else {}
-            except requests.RequestException:
-                if attempt == self.config.max_retries:
-                    raise
-                time.sleep(self.config.retry_delay)
+    async def _post(
+        self, url: str, payload: Dict[str, Any], headers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        delay = self.config.retry_delay
+        async with httpx.AsyncClient() as client:
+            for attempt in range(1, self.config.max_retries + 1):
+                try:
+                    response = await client.post(
+                        url, json=payload, headers=headers, timeout=5
+                    )
+                    response.raise_for_status()
+                    return response.json() if response.content else {}
+                except httpx.HTTPError:
+                    if attempt == self.config.max_retries:
+                        raise
+                    await asyncio.sleep(delay)
+                    delay *= 2
 
         return {}
 

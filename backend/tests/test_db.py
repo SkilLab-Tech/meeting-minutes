@@ -1,10 +1,12 @@
 import pytest
 
-from db import DatabaseManager
+from app.db import DatabaseManager
+from migrations import run_migrations
 
 @pytest.mark.asyncio
 async def test_meeting_crud(tmp_path):
     db_path = tmp_path / "test.db"
+    await run_migrations(str(db_path))
     db = DatabaseManager(str(db_path))
 
     await db.save_meeting("m1", "Test Meeting")

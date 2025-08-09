@@ -8,7 +8,7 @@ from pydantic_ai.models.openai import OpenAIModel
 import logging
 import os
 from dotenv import load_dotenv
-from .db import DatabaseManager
+from db import DatabaseManager
 
 
 
