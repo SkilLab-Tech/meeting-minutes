@@ -86,6 +86,13 @@ class MeetingDetailsResponse(BaseModel):
 class MeetingTitleUpdate(BaseModel):
     title: str
 
+class MeetingTitleRequest(BaseModel):
+    meeting_id: str
+    title: str
+
+class DeleteMeetingRequest(BaseModel):
+    meeting_id: str
+
 class SaveTranscriptRequest(BaseModel):
     meeting_title: str
     transcripts: List[Transcript]
@@ -199,9 +206,17 @@ async def get_meeting(meeting_id: str):
 
 @app.post("/save-meeting-title")
 async def save_meeting_title(
-    data: MeetingTitleUpdate,
+    data: MeetingTitleRequest,
     current_user: User = Depends(get_current_active_admin),
 ):
+    """Legacy endpoint for updating a meeting title."""
+    try:
+        await db.update_meeting_title(data.meeting_id, data.title)
+        return {"message": "Meeting title saved successfully"}
+    except Exception as e:
+        logger.error(f"Error saving meeting title: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/meetings/{meeting_id}/title")
 async def save_meeting_title(meeting_id: str, data: MeetingTitleUpdate):
@@ -220,6 +235,17 @@ async def delete_meeting(
     data: DeleteMeetingRequest,
     current_user: User = Depends(get_current_active_admin),
 ):
+    """Legacy endpoint to delete a meeting"""
+    try:
+        success = await db.delete_meeting(data.meeting_id)
+        if success:
+            return {"message": "Meeting deleted successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete meeting")
+    except Exception as e:
+        logger.error(f"Error deleting meeting: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.delete("/meetings/{meeting_id}")
 async def delete_meeting(meeting_id: str):
